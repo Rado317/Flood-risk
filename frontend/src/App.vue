@@ -36,9 +36,23 @@
     >
       <p>{{ resultat.message }}</p>
       <p v-if="resultat.message_ia" class="ia-message">🤖 {{ resultat.message_ia }}</p>
-      <button class="ia-button" :disabled="chargementIA" @click="genererMessageIA">
-        {{ chargementIA ? 'Génération...' : "Générer un message d'alerte via l'IA locale" }}
-      </button>
+    </section>
+
+    <section class="chat" v-if="resultat">
+      <label for="question">Poser une question à l'assistant</label>
+      <div class="chat-input-row">
+        <input
+          id="question"
+          v-model="question"
+          type="text"
+          placeholder="Ex : Qu'est-ce que je dois faire ?"
+          @keyup.enter="poserQuestion"
+        />
+        <button :disabled="chargementChat || !question.trim()" @click="poserQuestion">
+          {{ chargementChat ? '...' : 'Demander' }}
+        </button>
+      </div>
+      <div v-if="reponseChat" class="chat-response">🤖 {{ reponseChat }}</div>
     </section>
 
     <footer v-if="resultat">
@@ -51,12 +65,15 @@
 <script setup>
 import { ref, reactive, watch, onMounted } from 'vue'
 import RiskGauge from './components/RiskGauge.vue'
-import { predireRisque, recupererSeuils } from './services/api'
+import { predireRisque, recupererSeuils, demanderIA } from './services/api'
 
 const hauteurMax = ref(1.58)
 const resultat = ref(null)
-const chargementIA = ref(false)
 const seuils = reactive({ faible: 1.5, modere: 2.0, eleve: 4.05, valeur_max: 4.55 })
+
+const question = ref('')
+const reponseChat = ref('')
+const chargementChat = ref(false)
 
 const niveauxGauge = ref([
   { borne_sup: 1.5, couleur: '#2DD4BF' },
@@ -65,28 +82,39 @@ const niveauxGauge = ref([
   { borne_sup: Infinity, couleur: '#7F1D1D' },
 ])
 
-async function actualiser(avecIA = false) {
+async function actualiser() {
   try {
     resultat.value = await predireRisque({
       hauteur_max: hauteurMax.value,
-      generer_message_ia: avecIA,
+      generer_message_ia: false,
     })
   } catch (err) {
     console.error('Erreur API', err)
-  } finally {
-    chargementIA.value = false
   }
 }
 
-async function genererMessageIA() {
-  chargementIA.value = true
-  await actualiser(true)
+async function poserQuestion() {
+  if (!question.value.trim()) return
+  chargementChat.value = true
+  reponseChat.value = ''
+  try {
+    const data = await demanderIA({
+      question: question.value.trim(),
+      hauteur_max: hauteurMax.value,
+    })
+    reponseChat.value = data.reponse
+  } catch (err) {
+    console.error('Erreur chat IA', err)
+    reponseChat.value = "Impossible de contacter l'assistant IA pour le moment."
+  } finally {
+    chargementChat.value = false
+  }
 }
 
 let timer = null
 watch(hauteurMax, () => {
   clearTimeout(timer)
-  timer = setTimeout(() => actualiser(false), 200)
+  timer = setTimeout(actualiser, 200)
 })
 
 onMounted(async () => {
@@ -96,7 +124,7 @@ onMounted(async () => {
   } catch (err) {
     console.warn('Seuils par défaut utilisés (backend indisponible)', err)
   }
-  actualiser(false)
+  actualiser()
 })
 </script>
 
@@ -156,18 +184,43 @@ onMounted(async () => {
   margin-top: 8px;
   font-style: italic;
 }
-.ia-button {
-  margin-top: 10px;
-  padding: 8px 14px;
+.chat {
+  margin-top: 20px;
+}
+.chat label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 600;
+}
+.chat-input-row {
+  display: flex;
+  gap: 8px;
+}
+.chat-input-row input {
+  flex: 1;
+  padding: 10px 12px;
+  border-radius: 6px;
+  border: 1px solid #d1d5db;
+  font-size: 14px;
+}
+.chat-input-row button {
+  padding: 10px 16px;
   border-radius: 6px;
   border: none;
   background: #111827;
   color: white;
   cursor: pointer;
 }
-.ia-button:disabled {
+.chat-input-row button:disabled {
   opacity: 0.6;
   cursor: default;
+}
+.chat-response {
+  margin-top: 12px;
+  padding: 12px 16px;
+  background: #f3f4f6;
+  border-radius: 6px;
+  font-style: italic;
 }
 footer {
   margin-top: 16px;

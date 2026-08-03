@@ -98,6 +98,21 @@ def classifier_seuil(hauteur: float) -> dict:
     return NIVEAUX[-1]
 
 
+async def appeler_ollama(prompt: str) -> Optional[str]:
+    """Envoie un prompt au LLM local (Ollama) et retourne sa réponse."""
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(
+                OLLAMA_URL,
+                json={"model": OLLAMA_MODEL, "prompt": prompt, "stream": False},
+            )
+            response.raise_for_status()
+            return response.json().get("response", "").strip()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Ollama indisponible : %s", exc)
+        return None
+
+
 async def generer_message_ia(niveau: str, hauteur: float) -> Optional[str]:
     """Génère un message d'alerte contextualisé via un LLM local (Ollama)."""
     prompt = (
@@ -107,17 +122,44 @@ async def generer_message_ia(niveau: str, hauteur: float) -> Optional[str]:
         "(3 phrases maximum), clair et actionnable pour les autorités locales "
         "(BNGRC/APIPA)."
     )
-    try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            response = await client.post(
-                OLLAMA_URL,
-                json={"model": OLLAMA_MODEL, "prompt": prompt, "stream": False},
-            )
-            response.raise_for_status()
-            return response.json().get("response", "").strip()
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Ollama indisponible, message IA ignoré : %s", exc)
-        return None
+    return await appeler_ollama(prompt)
+
+
+class ChatInput(BaseModel):
+    question: str = Field(..., min_length=1, max_length=500)
+    hauteur_max: float = Field(..., ge=0, description="Hauteur d'eau actuelle affichée à l'utilisateur")
+
+
+class ChatOutput(BaseModel):
+    reponse: str
+    niveau: str
+
+
+@app.post("/api/chat", response_model=ChatOutput)
+async def chat(payload: ChatInput) -> ChatOutput:
+    niveau = classifier_seuil(payload.hauteur_max)
+
+    prompt = (
+        "Tu es un assistant d'alerte inondation pour la station d'Ambohimanambola "
+        "à Madagascar, utilisé par des habitants et des agents du BNGRC/APIPA. "
+        f"Contexte actuel : hauteur d'eau mesurée = {payload.hauteur_max:.2f} m, "
+        f"niveau de risque = '{niveau['nom']}' "
+        f"(seuils : Faible < {SEUIL_FAIBLE} m, Modéré < {SEUIL_MODERE} m, "
+        f"Élevé < {SEUIL_ELEVE} m, au-delà = Critique). "
+        f"Question de l'utilisateur : \"{payload.question}\". "
+        "Réponds en français, de façon claire, concrète et rassurante mais honnête, "
+        "en 4 phrases maximum, en tenant compte du niveau de risque actuel."
+    )
+
+    reponse = await appeler_ollama(prompt)
+    if reponse is None:
+        reponse = (
+            "L'assistant IA local (Ollama) n'est pas disponible actuellement. "
+            f"En attendant, voici le conseil standard pour le niveau '{niveau['nom']}' : "
+            f"{niveau['message']}"
+        )
+
+    return ChatOutput(reponse=reponse, niveau=niveau["nom"])
 
 
 @app.get("/api/health")
