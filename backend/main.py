@@ -1,13 +1,17 @@
 """Backend FastAPI — Analyse et alerte du risque d'inondation.
 
 Classification directe par seuils sur Hauteur_max, complétée par la
-probabilité d'un modèle ML (.pkl) si disponible, et par un message
-d'alerte généré via un LLM local (Ollama) — aucun appel API externe.
+probabilité d'un modèle ML (.pkl) si disponible, et par des réponses
+générées via l'API Groq (LLM hébergé, gratuit) — utilisée ici en
+remplacement d'un LLM local (Ollama) pour permettre le déploiement sur
+Render sans VPS dédié. Repasser à Ollama en local reste possible pour
+respecter la contrainte initiale « sans appel API externe ».
 """
 
 from __future__ import annotations
 
 import logging
+import os
 from pathlib import Path
 from typing import Optional
 
@@ -55,8 +59,10 @@ NIVEAUX = [
 ]
 
 MODEL_PATH = Path(__file__).parent / "models" / "pipeline.pkl"
-OLLAMA_URL = "http://localhost:11434/api/generate"
-OLLAMA_MODEL = "llama3.1"  # adapter selon le modèle installé localement
+
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
+GROQ_MODEL = "llama-3.1-8b-instant"
 
 _model_package: Optional[dict] = None
 
@@ -99,17 +105,27 @@ def classifier_seuil(hauteur: float) -> dict:
 
 
 async def appeler_ollama(prompt: str) -> Optional[str]:
-    """Envoie un prompt au LLM local (Ollama) et retourne sa réponse."""
+    """Envoie un prompt à l'API Groq (LLM hébergé, gratuit) et retourne sa réponse."""
+    if not GROQ_API_KEY:
+        logger.warning("GROQ_API_KEY absente — configure-la dans les variables d'environnement.")
+        return None
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.post(
-                OLLAMA_URL,
-                json={"model": OLLAMA_MODEL, "prompt": prompt, "stream": False},
+                GROQ_URL,
+                headers={"Authorization": f"Bearer {GROQ_API_KEY}"},
+                json={
+                    "model": GROQ_MODEL,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "temperature": 0.4,
+                    "max_tokens": 300,
+                },
             )
             response.raise_for_status()
-            return response.json().get("response", "").strip()
+            data = response.json()
+            return data["choices"][0]["message"]["content"].strip()
     except Exception as exc:  # noqa: BLE001
-        logger.warning("Ollama indisponible : %s", exc)
+        logger.warning("Groq indisponible : %s", exc)
         return None
 
 
