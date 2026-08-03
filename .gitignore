@@ -1,0 +1,17 @@
+# Node
+node_modules/
+frontend/dist/
+frontend/.env.production
+frontend/.env.local
+
+# Python
+backend/venv/
+backend/.venv/
+__pycache__/
+*.pyc
+
+# Modèles (souvent volumineux)
+backend/models/*.pkl
+
+# OS
+.DS_Store
