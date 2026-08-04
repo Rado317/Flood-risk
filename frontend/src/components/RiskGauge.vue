@@ -1,5 +1,12 @@
 <template>
-  <svg viewBox="0 0 300 170" class="gauge">
+  <svg
+    viewBox="0 0 300 170"
+    class="gauge"
+    @pointerdown="onPointerDown"
+    @pointermove="onPointerMove"
+    @pointerup="onPointerUp"
+    @pointerleave="onPointerUp"
+  >
     <path v-for="(zone, i) in zones" :key="i" :d="zone.path" :fill="zone.color" />
     <line
       :x1="150" :y1="150"
@@ -14,13 +21,17 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 
 const props = defineProps({
   hauteur: { type: Number, required: true },
   max: { type: Number, default: 4.55 },
   niveaux: { type: Array, required: true }, // [{ borne_sup, couleur }]
 })
+
+const emit = defineEmits(['update:hauteur'])
+
+const dragging = ref(false)
 
 function polarToCartesian(cx, cy, r, angleDeg) {
   const angleRad = ((angleDeg - 180) * Math.PI) / 180
@@ -50,12 +61,42 @@ const zones = computed(() => {
 
 const needleAngle = computed(() => (Math.min(props.hauteur, props.max) / props.max) * 180)
 const needlePoint = computed(() => polarToCartesian(150, 150, 110, needleAngle.value))
+
+function angleFromPointer(event, svgEl) {
+  const rect = svgEl.getBoundingClientRect()
+  const scaleX = 300 / rect.width
+  const scaleY = 170 / rect.height
+  const x = (event.clientX - rect.left) * scaleX - 150
+  const y = (event.clientY - rect.top) * scaleY - 150
+  let angle = (Math.atan2(y, x) * 180) / Math.PI + 180
+  angle = Math.max(0, Math.min(180, angle))
+  return angle
+}
+
+function updateFromEvent(event) {
+  const angle = angleFromPointer(event, event.currentTarget)
+  const nouvelleHauteur = (angle / 180) * props.max
+  emit('update:hauteur', Math.round(nouvelleHauteur * 100) / 100)
+}
+
+function onPointerDown(event) {
+  dragging.value = true
+  updateFromEvent(event)
+}
+function onPointerMove(event) {
+  if (dragging.value) updateFromEvent(event)
+}
+function onPointerUp() {
+  dragging.value = false
+}
 </script>
 
 <style scoped>
 .gauge {
   width: 100%;
   max-width: 320px;
+  cursor: pointer;
+  touch-action: none;
 }
 .value-text {
   font-size: 20px;
