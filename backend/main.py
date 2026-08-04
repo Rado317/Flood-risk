@@ -20,6 +20,7 @@ import joblib
 import numpy as np
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
 logging.basicConfig(level=logging.INFO)
@@ -176,6 +177,146 @@ async def chat(payload: ChatInput) -> ChatOutput:
         )
 
     return ChatOutput(reponse=reponse, niveau=niveau["nom"])
+
+
+@app.get("/", response_class=HTMLResponse)
+def accueil() -> str:
+    return """
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<title>API Risque d'Inondation — ARO.ai</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: system-ui, sans-serif;
+    background: radial-gradient(circle at 50% 0%, #0f172a, #020617 70%);
+    color: #e2e8f0;
+    min-height: 100vh;
+    padding: 40px 20px;
+  }
+  .wrap { max-width: 640px; margin: 0 auto; }
+  h1 { font-size: 28px; margin: 0 0 4px; }
+  .dot { color: #38bdf8; }
+  p.sub { color: #94a3b8; margin: 0 0 32px; font-size: 14px; }
+  .status { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: #34d399; margin-bottom: 32px; }
+  .status .light { width: 8px; height: 8px; border-radius: 50%; background: #34d399; }
+  .card {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 14px;
+    padding: 22px;
+    margin-bottom: 20px;
+  }
+  .card h2 { font-size: 15px; margin: 0 0 14px; color: #f1f5f9; }
+  label { display: block; font-size: 13px; color: #94a3b8; margin-bottom: 6px; }
+  input[type="range"] { width: 100%; accent-color: #38bdf8; }
+  input[type="text"], input[type="number"] {
+    width: 100%; padding: 10px 12px; border-radius: 8px;
+    border: 1px solid #334155; background: #0f172a; color: #e2e8f0; font-size: 14px;
+  }
+  .row { display: flex; align-items: center; gap: 12px; margin-bottom: 6px; }
+  .row .val { font-weight: 700; min-width: 60px; text-align: right; }
+  button {
+    padding: 10px 18px; border-radius: 8px; border: none;
+    background: #38bdf8; color: #020617; font-weight: 600; cursor: pointer;
+    margin-top: 12px;
+  }
+  button:hover { background: #7dd3fc; }
+  button:disabled { opacity: 0.5; cursor: default; }
+  .result { margin-top: 16px; padding: 14px; border-radius: 10px; background: #0f172a; font-size: 14px; line-height: 1.5; white-space: pre-wrap; }
+  .links { font-size: 13px; color: #64748b; }
+  .links a { color: #38bdf8; text-decoration: none; }
+  .links a:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>ARO<span class="dot">.ai</span> — API</h1>
+  <p class="sub">Backend de classification et d'alerte du risque d'inondation — station Ambohimanambola</p>
+  <div class="status"><span class="light"></span> Service actif</div>
+
+  <div class="card">
+    <h2>Tester la classification</h2>
+    <label for="hauteur">Hauteur d'eau maximale (m)</label>
+    <div class="row">
+      <input type="range" id="hauteur" min="0" max="4.55" step="0.01" value="1.58" />
+      <span class="val" id="hauteurVal">1.58 m</span>
+    </div>
+    <button id="btnPredict">Tester /api/predict</button>
+    <div class="result" id="resultPredict" style="display:none;"></div>
+  </div>
+
+  <div class="card">
+    <h2>Tester l'assistant IA</h2>
+    <label for="question">Question</label>
+    <input type="text" id="question" placeholder="Qu'est-ce que je dois faire ?" />
+    <button id="btnChat">Tester /api/chat</button>
+    <div class="result" id="resultChat" style="display:none;"></div>
+  </div>
+
+  <p class="links">
+    Documentation interactive : <a href="/docs">/docs</a> —
+    Etat du service : <a href="/api/health">/api/health</a>
+  </p>
+</div>
+
+<script>
+  const hauteurInput = document.getElementById('hauteur');
+  const hauteurVal = document.getElementById('hauteurVal');
+  hauteurInput.addEventListener('input', () => {
+    hauteurVal.textContent = parseFloat(hauteurInput.value).toFixed(2) + ' m';
+  });
+
+  document.getElementById('btnPredict').addEventListener('click', async (e) => {
+    const btn = e.target;
+    const box = document.getElementById('resultPredict');
+    btn.disabled = true;
+    box.style.display = 'block';
+    box.textContent = 'Chargement...';
+    try {
+      const res = await fetch('/api/predict', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hauteur_max: parseFloat(hauteurInput.value) }),
+      });
+      const data = await res.json();
+      box.textContent = JSON.stringify(data, null, 2);
+    } catch (err) {
+      box.textContent = 'Erreur : ' + err;
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  document.getElementById('btnChat').addEventListener('click', async (e) => {
+    const btn = e.target;
+    const box = document.getElementById('resultChat');
+    const question = document.getElementById('question').value.trim();
+    if (!question) return;
+    btn.disabled = true;
+    box.style.display = 'block';
+    box.textContent = 'Chargement...';
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question, hauteur_max: parseFloat(hauteurInput.value) }),
+      });
+      const data = await res.json();
+      box.textContent = data.reponse || JSON.stringify(data, null, 2);
+    } catch (err) {
+      box.textContent = 'Erreur : ' + err;
+    } finally {
+      btn.disabled = false;
+    }
+  });
+</script>
+</body>
+</html>
+"""
 
 
 @app.get("/api/health")
