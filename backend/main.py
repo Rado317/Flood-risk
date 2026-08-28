@@ -63,7 +63,7 @@ MODEL_PATH = Path(__file__).parent / "models" / "pipeline.pkl"
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
-GROQ_MODEL = "llama-3.1-8b-instant"
+GROQ_MODEL = "openai/gpt-oss-20b"
 
 _model_package: Optional[dict] = None
 
