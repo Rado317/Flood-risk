@@ -6,6 +6,15 @@ générées via l'API Groq (LLM hébergé, gratuit) — utilisée ici en
 remplacement d'un LLM local (Ollama) pour permettre le déploiement sur
 Render sans VPS dédié. Repasser à Ollama en local reste possible pour
 respecter la contrainte initiale « sans appel API externe ».
+
+Support multilingue (FR/malgache) :
+- Détection de la langue de la question (mots-clés malgache).
+- Génération de la réponse en français par Groq (fiable).
+- Traduction FR -> malgache via NLLB-200 (Meta, API Hugging Face
+  Inference, gratuite) si la question est en malgache.
+- Messages d'alerte de niveau (Faible/Modéré/Élevé/Critique) : traduction
+  humaine pré-écrite en dur, jamais générée par un LLM (trop risqué pour
+  un message de sécurité critique).
 """
 
 from __future__ import annotations
@@ -13,7 +22,7 @@ from __future__ import annotations
 import logging
 import os
 from pathlib import Path
-from typing import Optional
+from typing import Literal, Optional
 
 import httpx
 import joblib
@@ -59,11 +68,52 @@ NIVEAUX = [
      "message": "ALERTE CRITIQUE. Déclenchez la procédure d'urgence."},
 ]
 
+# --------------------------------------------------------------------------
+# Support multilingue — messages de niveau pré-traduits en malgache.
+# Traduction humaine à valider par un locuteur natif avant soutenance.
+# Ne JAMAIS remplacer ce dict par une génération LLM : un message d'alerte
+# inondation mal traduit peut induire une mauvaise décision sur le terrain.
+# --------------------------------------------------------------------------
+MESSAGES_FALLBACK = {
+    "fr": {n["nom"]: n["message"] for n in NIVEAUX},
+    "mg": {
+        "Faible": "Tsy misy fampitandremana. Fanaraha-maso mahazatra.",
+        "Modéré": "Tandremo. Araho ny fivoarany amin'ny ora manaraka.",
+        "Élevé": "Loza mety hitranga. Ampahafantaro ny ekipa an-toerana (BNGRC/APIPA).",
+        "Critique": "FAMPITANDREMANA LOZA MAFY. Alefaso ny fepetra vonjy taitra.",
+    },
+}
+
+# Mots-clés simples pour détecter une question posée en malgache.
+# Un détecteur de type langdetect ne couvre pas le malgache de manière
+# fiable — cette heuristique par mots-clés (ou un sélecteur FR/MG côté
+# frontend) est plus robuste ici.
+MG_KEYWORDS = {
+    "inona", "ahoana", "aiza", "ny", "ianao", "izay", "sy", "amin",
+    "misy", "tsara", "ratsy", "loza", "tondra-drano", "toerana",
+}
+
+
+def detecter_langue(texte: str) -> Literal["fr", "mg"]:
+    mots = set(texte.lower().split())
+    if mots & MG_KEYWORDS:
+        return "mg"
+    return "fr"
+
+
 MODEL_PATH = Path(__file__).parent / "models" / "pipeline.pkl"
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 GROQ_MODEL = "openai/gpt-oss-20b"
+
+# NLLB-200 (Meta) via l'API Hugging Face Inference — gratuite, modèle
+# open-source spécifiquement entraîné pour les langues peu dotées comme
+# le malgache (code FLORES-200 : plt_Latn). Utilisé uniquement pour
+# traduire une réponse déjà générée en français, jamais pour générer
+# du texte librement en malgache.
+HF_TOKEN = os.getenv("HF_TOKEN")
+HF_NLLB_URL = "https://api-inference.huggingface.co/models/facebook/nllb-200-distilled-600M"
 
 _model_package: Optional[dict] = None
 
@@ -130,6 +180,33 @@ async def appeler_ollama(prompt: str) -> Optional[str]:
         return None
 
 
+async def traduire_vers_malgache(texte_fr: str) -> Optional[str]:
+    """Traduit un texte français en malgache via NLLB-200 (API Hugging Face).
+
+    Retourne None si le token HF est absent ou si l'appel échoue —
+    l'appelant doit alors utiliser MESSAGES_FALLBACK["mg"] en secours.
+    """
+    if not HF_TOKEN:
+        logger.warning("HF_TOKEN absente — configure-la dans les variables d'environnement.")
+        return None
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(
+                HF_NLLB_URL,
+                headers={"Authorization": f"Bearer {HF_TOKEN}"},
+                json={
+                    "inputs": texte_fr,
+                    "parameters": {"src_lang": "fra_Latn", "tgt_lang": "plt_Latn"},
+                },
+            )
+            response.raise_for_status()
+            data = response.json()
+            return data[0]["translation_text"]
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("NLLB indisponible : %s", exc)
+        return None
+
+
 async def generer_message_ia(niveau: str, hauteur: float) -> Optional[str]:
     """Génère un message d'alerte contextualisé via un LLM local (Ollama)."""
     prompt = (
@@ -145,16 +222,22 @@ async def generer_message_ia(niveau: str, hauteur: float) -> Optional[str]:
 class ChatInput(BaseModel):
     question: str = Field(..., min_length=1, max_length=500)
     hauteur_max: float = Field(..., ge=0, description="Hauteur d'eau actuelle affichée à l'utilisateur")
+    # "auto" : détection par mots-clés côté serveur. Le frontend peut aussi
+    # envoyer directement "fr" ou "mg" si un sélecteur de langue est ajouté
+    # à l'interface (recommandé, plus fiable que la détection automatique).
+    langue: Literal["fr", "mg", "auto"] = "auto"
 
 
 class ChatOutput(BaseModel):
     reponse: str
     niveau: str
+    langue: str
 
 
 @app.post("/api/chat", response_model=ChatOutput)
 async def chat(payload: ChatInput) -> ChatOutput:
     niveau = classifier_seuil(payload.hauteur_max)
+    langue = detecter_langue(payload.question) if payload.langue == "auto" else payload.langue
 
     prompt = (
         "Tu es un assistant d'alerte inondation pour la station d'Ambohimanambola "
@@ -168,15 +251,24 @@ async def chat(payload: ChatInput) -> ChatOutput:
         "en 4 phrases maximum, en tenant compte du niveau de risque actuel."
     )
 
-    reponse = await appeler_ollama(prompt)
-    if reponse is None:
-        reponse = (
-            "L'assistant IA local (Ollama) n'est pas disponible actuellement. "
+    # La génération reste toujours en français (le LLM y est fiable).
+    reponse_fr = await appeler_ollama(prompt)
+    if reponse_fr is None:
+        reponse_fr = (
+            "L'assistant IA n'est pas disponible actuellement. "
             f"En attendant, voici le conseil standard pour le niveau '{niveau['nom']}' : "
-            f"{niveau['message']}"
+            f"{MESSAGES_FALLBACK['fr'][niveau['nom']]}"
         )
 
-    return ChatOutput(reponse=reponse, niveau=niveau["nom"])
+    if langue == "mg":
+        reponse = await traduire_vers_malgache(reponse_fr)
+        if reponse is None:
+            # Repli sur le message de niveau pré-traduit si NLLB échoue.
+            reponse = MESSAGES_FALLBACK["mg"][niveau["nom"]]
+    else:
+        reponse = reponse_fr
+
+    return ChatOutput(reponse=reponse, niveau=niveau["nom"], langue=langue)
 
 
 @app.get("/", response_class=HTMLResponse)
