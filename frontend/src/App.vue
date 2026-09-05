@@ -5,7 +5,7 @@
 
   <Transition name="rise">
     <div class="page" :data-theme="theme" v-if="!showWelcome">
-      <AmbientBackground :couleur="resultat ? resultat.couleur : '#0ea5e9'" />
+      <AmbientBackground :couleur="resultat ? resultat.couleur : '#0ea5e9'" :theme="theme" />
       <div class="content">
         <header>
           <div class="brand">

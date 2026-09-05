@@ -1,13 +1,14 @@
 <template>
-  <canvas ref="canvasRef" class="ambient-canvas"></canvas>
+  <canvas ref="canvasRef" class="ambient-canvas" :style="{ background: bgWash }"></canvas>
 </template>
 
 <script setup>
-import { onMounted, onBeforeUnmount, ref, watch } from 'vue'
+import { onMounted, onBeforeUnmount, ref, watch, computed } from 'vue'
 import * as THREE from 'three'
 
 const props = defineProps({
   couleur: { type: String, default: '#0ea5e9' },
+  theme: { type: String, default: 'light' },
 })
 
 const canvasRef = ref(null)
@@ -15,6 +16,19 @@ let renderer, scene, camera, particles, animationId, onResize
 
 function hexToThreeColor(hex) {
   return new THREE.Color(hex)
+}
+
+// léger fond radial derrière les particules, cohérent avec le thème
+const bgWash = computed(() =>
+  props.theme === 'dark'
+    ? 'radial-gradient(circle at 50% 20%, rgba(15, 23, 42, 0.6), rgba(2, 6, 23, 0.9) 70%)'
+    : 'transparent'
+)
+
+function paramsForTheme() {
+  return props.theme === 'dark'
+    ? { size: 0.06, opacity: 0.55 }
+    : { size: 0.05, opacity: 0.35 }
 }
 
 onMounted(() => {
@@ -33,11 +47,12 @@ onMounted(() => {
   for (let i = 0; i < count * 3; i++) positions[i] = (Math.random() - 0.5) * 30
   geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3))
 
+  const { size, opacity } = paramsForTheme()
   const material = new THREE.PointsMaterial({
     color: hexToThreeColor(props.couleur),
-    size: 0.05,
+    size,
     transparent: true,
-    opacity: 0.35,
+    opacity,
   })
   particles = new THREE.Points(geometry, material)
   scene.add(particles)
@@ -64,6 +79,7 @@ onMounted(() => {
     renderer.setSize(window.innerWidth, window.innerHeight)
   }
   window.addEventListener('resize', onResize)
+
   canvas._cleanup = () => window.removeEventListener('mousemove', onMouseMove)
 })
 
@@ -72,6 +88,18 @@ watch(
   (nouvelle) => {
     if (particles) {
       particles.material.color = hexToThreeColor(nouvelle)
+    }
+  }
+)
+
+watch(
+  () => props.theme,
+  () => {
+    if (particles) {
+      const { size, opacity } = paramsForTheme()
+      particles.material.size = size
+      particles.material.opacity = opacity
+      particles.material.needsUpdate = true
     }
   }
 )
@@ -90,5 +118,6 @@ onBeforeUnmount(() => {
   inset: 0;
   z-index: 0;
   pointer-events: none;
+  transition: background 0.4s ease;
 }
 </style>
