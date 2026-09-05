@@ -4,7 +4,7 @@
     <div class="overlay">
       <h1 class="logo">ARO<span class="dot">.ai</span></h1>
       <p class="tagline">Surveillance intelligente du risque d'inondation</p>
-      <p class="sub">S</p>
+      <p class="sub"></p>
       <button class="enter-btn" @click="enter">Entrer</button>
     </div>
     <div class="scroll-hint"></div>
