@@ -4,91 +4,104 @@
   </Transition>
 
   <Transition name="rise">
-    <div class="page" v-if="!showWelcome">
+    <div class="page" :data-theme="theme" v-if="!showWelcome">
       <AmbientBackground :couleur="resultat ? resultat.couleur : '#0ea5e9'" />
       <div class="content">
-      <header>
-        <div class="brand">
-          <div>
-            <h1>ARO<span class="dot">.ai</span> — Risque d'Inondation</h1>
-            
-        </div>
-      </header>
-
-      <section class="slider-card">
-        <label for="hauteur">Hauteur d'eau maximale mesurée</label>
-        <div class="slider-row">
-          <input
-            id="hauteur"
-            type="range"
-            min="0"
-            :max="seuils.valeur_max"
-            step="0.01"
-            v-model.number="hauteurMax"
-          />
-          <span class="value">{{ hauteurMax.toFixed(2) }} m</span>
-        </div>
-      </section>
-
-      <Transition name="pop" mode="out-in">
-        <section class="result" v-if="resultat" :key="resultat.niveau">
-          <div class="card" :style="{ backgroundColor: resultat.couleur }">
-            <div class="card-label">Niveau de risque</div>
-            <div class="card-value">{{ resultat.niveau }}</div>
-            <div class="card-sub">hauteur_max = {{ resultat.hauteur_max.toFixed(2) }} m</div>
-          </div>
-          <div class="gauge-wrap">
-            <RiskGauge
-              :hauteur="hauteurMax"
-              :max="seuils.valeur_max"
-              :niveaux="niveauxGauge"
-              @update:hauteur="hauteurMax = $event"
-            />
-            <span class="gauge-hint">glisser sur la jauge pour régler la hauteur</span>
-          </div>
-        </section>
-      </Transition>
-
-      <Transition name="pop">
-        <section
-          class="alert"
-          v-if="resultat"
-          :style="{ borderColor: resultat.couleur, backgroundColor: resultat.couleur + '22' }"
-        >
-          <p>{{ resultat.message }}</p>
-        </section>
-      </Transition>
-
-      <section class="chat" v-if="resultat">
-        <label for="question">Poser une question à l'assistant</label>
-        <div class="chat-input-row">
-          <input
-            id="question"
-            v-model="question"
-            type="text"
-            placeholder="Ex : Qu'est-ce que je dois faire ?"
-            @keyup.enter="poserQuestion"
-          />
-          <button :disabled="chargementChat || !question.trim()" @click="poserQuestion">
-            {{ chargementChat ? '...' : 'Demander' }}
-          </button>
-        </div>
-        <Transition name="pop">
-          <div v-if="reponseChat" class="chat-response">
+        <header>
+          <div class="brand">
             <div>
-              <p>{{ reponseChat }}</p>
-              <span class="chat-meta">
-                réponse basée sur hauteur_max = {{ hauteurALaQuestion.toFixed(2) }} m
-              </span>
+              <h1>ARO<span class="dot">.ai</span> — Risque d'Inondation</h1>
             </div>
           </div>
-        </Transition>
-      </section>
+          <button
+            class="theme-toggle"
+            @click="toggleTheme"
+            :aria-label="theme === 'dark' ? 'Activer le mode clair' : 'Activer le mode sombre'"
+          >
+            <svg v-if="theme === 'dark'" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <circle cx="12" cy="12" r="5" />
+              <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
+            </svg>
+            <svg v-else width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+            </svg>
+          </button>
+        </header>
 
-      <footer v-if="resultat">
-        Seuils : Faible &lt; {{ resultat.seuil_faible }} m ≤ Modéré &lt; {{ resultat.seuil_modere }} m
-        ≤ Élevé &lt; {{ resultat.seuil_eleve }} m ≤ Critique
-      </footer>
+        <section class="slider-card">
+          <label for="hauteur">Hauteur d'eau maximale mesurée</label>
+          <div class="slider-row">
+            <input
+              id="hauteur"
+              type="range"
+              min="0"
+              :max="seuils.valeur_max"
+              step="0.01"
+              v-model.number="hauteurMax"
+            />
+            <span class="value">{{ hauteurMax.toFixed(2) }} m</span>
+          </div>
+        </section>
+
+        <Transition name="pop" mode="out-in">
+          <section class="result" v-if="resultat" :key="resultat.niveau">
+            <div class="card" :style="{ backgroundColor: resultat.couleur }">
+              <div class="card-label">Niveau de risque</div>
+              <div class="card-value">{{ resultat.niveau }}</div>
+              <div class="card-sub">hauteur_max = {{ resultat.hauteur_max.toFixed(2) }} m</div>
+            </div>
+            <div class="gauge-wrap">
+              <RiskGauge
+                :hauteur="hauteurMax"
+                :max="seuils.valeur_max"
+                :niveaux="niveauxGauge"
+                @update:hauteur="hauteurMax = $event"
+              />
+              <span class="gauge-hint">glisser sur la jauge pour régler la hauteur</span>
+            </div>
+          </section>
+        </Transition>
+
+        <Transition name="pop">
+          <section
+            class="alert"
+            v-if="resultat"
+            :style="{ borderColor: resultat.couleur, backgroundColor: resultat.couleur + '22' }"
+          >
+            <p>{{ resultat.message }}</p>
+          </section>
+        </Transition>
+
+        <section class="chat" v-if="resultat">
+          <label for="question">Poser une question à l'assistant</label>
+          <div class="chat-input-row">
+            <input
+              id="question"
+              v-model="question"
+              type="text"
+              placeholder="Ex : Qu'est-ce que je dois faire ?"
+              @keyup.enter="poserQuestion"
+            />
+            <button :disabled="chargementChat || !question.trim()" @click="poserQuestion">
+              {{ chargementChat ? '...' : 'Demander' }}
+            </button>
+          </div>
+          <Transition name="pop">
+            <div v-if="reponseChat" class="chat-response">
+              <div>
+                <p>{{ reponseChat }}</p>
+                <span class="chat-meta">
+                  réponse basée sur hauteur_max = {{ hauteurALaQuestion.toFixed(2) }} m
+                </span>
+              </div>
+            </div>
+          </Transition>
+        </section>
+
+        <footer v-if="resultat">
+          Seuils : Faible &lt; {{ resultat.seuil_faible }} m ≤ Modéré &lt; {{ resultat.seuil_modere }} m
+          ≤ Élevé &lt; {{ resultat.seuil_eleve }} m ≤ Critique
+        </footer>
       </div>
     </div>
   </Transition>
@@ -102,6 +115,13 @@ import RiskGauge from './components/RiskGauge.vue'
 import { predireRisque, recupererSeuils, demanderIA } from './services/api'
 
 const showWelcome = ref(true)
+
+const theme = ref(localStorage.getItem('aro-theme') || 'light')
+
+function toggleTheme() {
+  theme.value = theme.value === 'light' ? 'dark' : 'light'
+  localStorage.setItem('aro-theme', theme.value)
+}
 
 const hauteurMax = ref(1.58)
 const resultat = ref(null)
@@ -170,11 +190,41 @@ onMounted(async () => {
 
 <style scoped>
 .page {
+  --bg-start: #cde5fd;
+  --bg-end: #eef2ff;
+  --text: #0f172a;
+  --text-muted: #64748b;
+  --card-bg: #ffffff;
+  --card-shadow: rgba(15, 23, 42, 0.06);
+  --border: #e2e8f0;
+  --accent: #0ea5e9;
+  --input-bg: #ffffff;
+  --input-border: #e2e8f0;
+  --chat-bg: #f1f5f9;
+  --footer-text: #94a3b8;
+
   position: relative;
   min-height: 100vh;
-  background: linear-gradient(180deg, #cde5fd 0%, #eef2ff 100%);
+  background: linear-gradient(180deg, var(--bg-start) 0%, var(--bg-end) 100%);
   overflow: hidden;
+  transition: background 0.4s ease;
 }
+
+.page[data-theme='dark'] {
+  --bg-start: #0f172a;
+  --bg-end: #020617;
+  --text: #e2e8f0;
+  --text-muted: #94a3b8;
+  --card-bg: #111827;
+  --card-shadow: rgba(0, 0, 0, 0.45);
+  --border: #1e293b;
+  --accent: #38bdf8;
+  --input-bg: #0f172a;
+  --input-border: #334155;
+  --chat-bg: #1e293b;
+  --footer-text: #475569;
+}
+
 .content {
   position: relative;
   z-index: 1;
@@ -182,10 +232,14 @@ onMounted(async () => {
   margin: 0 auto;
   padding: 40px 24px 60px;
   font-family: system-ui, sans-serif;
-  color: #0f172a;
+  color: var(--text);
 }
+
 header {
   margin-bottom: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 .brand {
   display: flex;
@@ -197,25 +251,45 @@ h1 {
   margin: 0;
 }
 .dot {
-  color: #0ea5e9;
+  color: var(--accent);
 }
 .subtitle {
-  color: #64748b;
+  color: var(--text-muted);
   margin: 4px 0 0;
   font-size: 14px;
 }
 
+.theme-toggle {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--card-bg);
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.theme-toggle:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 .slider-card {
-  background: white;
+  background: var(--card-bg);
   border-radius: 16px;
   padding: 20px 24px;
-  box-shadow: 0 4px 20px rgba(15, 23, 42, 0.06);
+  box-shadow: 0 4px 20px var(--card-shadow);
   margin-bottom: 24px;
+  transition: background 0.4s ease;
 }
 .slider-card label {
   font-weight: 600;
   font-size: 14px;
-  color: #334155;
+  color: var(--text-muted);
 }
 .slider-row {
   display: flex;
@@ -225,13 +299,14 @@ h1 {
 }
 .slider-row input[type='range'] {
   flex: 1;
-  accent-color: #0ea5e9;
+  accent-color: var(--accent);
   height: 6px;
 }
 .slider-row .value {
   font-weight: 700;
   min-width: 64px;
   text-align: right;
+  color: var(--text);
 }
 
 .result {
@@ -249,7 +324,7 @@ h1 {
 }
 .gauge-hint {
   font-size: 11px;
-  color: #94a3b8;
+  color: var(--text-muted);
 }
 .card {
   border-radius: 16px;
@@ -280,21 +355,23 @@ h1 {
   border-radius: 10px;
   padding: 16px 20px;
   margin-bottom: 20px;
+  color: var(--text);
 }
 
 .chat {
-  background: white;
+  background: var(--card-bg);
   border-radius: 16px;
   padding: 20px 24px;
-  box-shadow: 0 4px 20px rgba(15, 23, 42, 0.06);
+  box-shadow: 0 4px 20px var(--card-shadow);
   margin-bottom: 20px;
+  transition: background 0.4s ease;
 }
 .chat label {
   display: block;
   margin-bottom: 10px;
   font-weight: 600;
   font-size: 14px;
-  color: #334155;
+  color: var(--text-muted);
 }
 .chat-input-row {
   display: flex;
@@ -304,26 +381,28 @@ h1 {
   flex: 1;
   padding: 11px 14px;
   border-radius: 10px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--input-border);
+  background: var(--input-bg);
+  color: var(--text);
   font-size: 14px;
 }
 .chat-input-row input:focus {
   outline: none;
-  border-color: #0ea5e9;
-  box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.15);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.15);
 }
 .chat-input-row button {
   padding: 11px 18px;
   border-radius: 10px;
   border: none;
-  background: #0f172a;
+  background: var(--accent);
   color: white;
   cursor: pointer;
   font-weight: 600;
-  transition: background 0.2s ease;
+  transition: filter 0.2s ease;
 }
 .chat-input-row button:hover:not(:disabled) {
-  background: #0ea5e9;
+  filter: brightness(1.12);
 }
 .chat-input-row button:disabled {
   opacity: 0.5;
@@ -332,26 +411,28 @@ h1 {
 .chat-response {
   margin-top: 14px;
   padding: 14px 16px;
-  background: #f1f5f9;
+  background: var(--chat-bg);
   border-radius: 10px;
   display: flex;
   gap: 10px;
+  transition: background 0.4s ease;
 }
 .chat-response p {
   margin: 0;
   font-style: italic;
   line-height: 1.5;
+  color: var(--text);
 }
 .chat-meta {
   display: block;
   margin-top: 6px;
   font-size: 11px;
-  color: #94a3b8;
+  color: var(--footer-text);
   font-style: normal;
 }
 
 footer {
-  color: #94a3b8;
+  color: var(--footer-text);
   font-size: 13px;
   text-align: center;
 }
