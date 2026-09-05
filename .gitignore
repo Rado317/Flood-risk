@@ -14,4 +14,5 @@ __pycache__/
 backend/models/*.pkl
 
 # OS
-.DS_Store
+.DS_Storebackend/.env
+.env

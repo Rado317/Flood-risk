@@ -11,8 +11,7 @@
         <div class="brand">
           <div>
             <h1>ARO<span class="dot">.ai</span> — Risque d'Inondation</h1>
-            <p class="subtitle">Station Ambohimanambola — Classification selon la hauteur d'eau maximale</p>
-          </div>
+            
         </div>
       </header>
 
@@ -173,7 +172,7 @@ onMounted(async () => {
 .page {
   position: relative;
   min-height: 100vh;
-  background: linear-gradient(180deg, #f8fafc 0%, #eef2ff 100%);
+  background: linear-gradient(180deg, #cde5fd 0%, #eef2ff 100%);
   overflow: hidden;
 }
 .content {

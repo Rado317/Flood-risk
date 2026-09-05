@@ -4,10 +4,10 @@
     <div class="overlay">
       <h1 class="logo">ARO<span class="dot">.ai</span></h1>
       <p class="tagline">Surveillance intelligente du risque d'inondation</p>
-      <p class="sub">Station Ambohimanambola — Madagascar</p>
+      <p class="sub">S</p>
       <button class="enter-btn" @click="enter">Entrer</button>
     </div>
-    <div class="scroll-hint">cliquez n'importe où pour continuer</div>
+    <div class="scroll-hint"></div>
   </div>
 </template>
 

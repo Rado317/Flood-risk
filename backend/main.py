@@ -15,6 +15,11 @@ Support multilingue (FR/malgache) :
 - Messages d'alerte de niveau (Faible/Modéré/Élevé/Critique) : traduction
   humaine pré-écrite en dur, jamais générée par un LLM (trop risqué pour
   un message de sécurité critique).
+
+Carte des quartiers vulnérables :
+- Limites de quartiers via Overpass API (OSM), altitude via
+  Open-Elevation — deux APIs publiques gratuites, en remplacement d'un
+  raster de hazard (.tif) que le projet n'a pas. Voir geo_service.py.
 """
 
 from __future__ import annotations
@@ -31,6 +36,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
+
+from geo_service import get_quartiers_antananarivo, get_elevations
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("flood-risk-api")
@@ -67,6 +74,10 @@ NIVEAUX = [
     {"nom": "Critique", "borne_sup": float("inf"), "couleur": "#7F1D1D",
      "message": "ALERTE CRITIQUE. Déclenchez la procédure d'urgence."},
 ]
+
+# Ordre croissant des niveaux — utilisé pour surclasser le risque d'un
+# quartier (voir /api/quartiers-risque).
+NIVEAU_ORDER = [n["nom"] for n in NIVEAUX]
 
 # --------------------------------------------------------------------------
 # Support multilingue — messages de niveau pré-traduits en malgache.
@@ -134,6 +145,9 @@ class HauteurInput(BaseModel):
     debit_mean: Optional[float] = None
     pluie_somme: Optional[float] = None
     generer_message_ia: bool = False
+    # Choix explicite du frontend (sélecteur FR/MG), pas une détection —
+    # ce champ ne concerne que la langue du message de niveau renvoyé.
+    langue: Literal["fr", "mg"] = "fr"
 
 
 class RiskOutput(BaseModel):
@@ -430,6 +444,12 @@ def seuils() -> dict:
 async def predict(payload: HauteurInput) -> RiskOutput:
     niveau = classifier_seuil(payload.hauteur_max)
 
+    # Message localisé selon le choix explicite du frontend (FR/MG).
+    message = (
+        niveau["message"] if payload.langue == "fr"
+        else MESSAGES_FALLBACK["mg"][niveau["nom"]]
+    )
+
     probabilite_modele = None
     package = get_model_package()
     if package is not None and payload.hauteur_mean is not None:
@@ -453,7 +473,7 @@ async def predict(payload: HauteurInput) -> RiskOutput:
     return RiskOutput(
         niveau=niveau["nom"],
         couleur=niveau["couleur"],
-        message=niveau["message"],
+        message=message,
         hauteur_max=payload.hauteur_max,
         seuil_faible=SEUIL_FAIBLE,
         seuil_modere=SEUIL_MODERE,
@@ -461,3 +481,36 @@ async def predict(payload: HauteurInput) -> RiskOutput:
         probabilite_modele=probabilite_modele,
         message_ia=message_ia,
     )
+
+
+@app.get("/api/quartiers-risque")
+async def quartiers_risque(hauteur_max: float):
+    """Carte des quartiers vulnérables : niveau de risque global du jour
+    (mêmes seuils que /api/predict), surclassé d'un cran pour les zones
+    les plus basses — proxy d'altitude en l'absence de raster de hazard.
+    Voir geo_service.py pour le détail des appels Overpass/Open-Elevation.
+    """
+    niveau_global = classifier_seuil(hauteur_max)["nom"]
+    base_index = NIVEAU_ORDER.index(niveau_global)
+
+    quartiers = await get_quartiers_antananarivo()
+    elevations = await get_elevations([(q["lat"], q["lon"]) for q in quartiers])
+
+    valides = sorted(e for e in elevations if e is not None)
+    mediane = valides[len(valides) // 2] if valides else 0
+
+    features = []
+    for q, elev in zip(quartiers, elevations):
+        index = base_index
+        if elev is not None and elev < mediane:
+            index = min(index + 1, len(NIVEAU_ORDER) - 1)
+        nom = NIVEAU_ORDER[index]
+        couleur = next(n["couleur"] for n in NIVEAUX if n["nom"] == nom)
+
+        features.append({
+            "type": "Feature",
+            "properties": {"name": q["name"], "niveau": nom, "couleur": couleur, "elevation": elev},
+            "geometry": {"type": "Point", "coordinates": [q["lon"], q["lat"]]},
+        })
+
+    return {"type": "FeatureCollection", "features": features}
